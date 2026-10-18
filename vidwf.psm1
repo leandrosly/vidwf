@@ -147,6 +147,96 @@ function Write-VwfMergeCheck {
     Write-Warning ("{0}: {1}. Originais preservados." -f $Check.Arquivo, ($motivos -join '; '))
 }
 
+function Get-VwfFreeSpace {
+    <#
+    .SYNOPSIS
+        Espaco livre, em bytes, do volume que contem o caminho informado.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    $raiz = [System.IO.Path]::GetPathRoot((Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue).Path)
+    if (-not $raiz) { $raiz = [System.IO.Path]::GetPathRoot($Path) }
+
+    try {
+        ([System.IO.DriveInfo]::new($raiz)).AvailableFreeSpace
+    } catch {
+        Write-Warning "Nao foi possivel medir o espaco livre em $raiz."
+        $null
+    }
+}
+
+function Test-VwfSpace {
+    <#
+    .SYNOPSIS
+        Verifica se ha espaco para gravar Required bytes no destino, com folga.
+    .PARAMETER Required
+        Bytes que serao escritos.
+    .PARAMETER MarginPercent
+        Folga sobre o necessario. Padrao: SpaceMarginPercent do config.
+    .OUTPUTS
+        Objeto com Ok, LivreGB, NecessarioGB e FaltaGB.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][double]$Required,
+        [double]$MarginPercent = -1
+    )
+
+    $cfg = Get-VwfConfig
+    if ($MarginPercent -lt 0) { $MarginPercent = $cfg.SpaceMarginPercent }
+
+    $livre     = Get-VwfFreeSpace -Path $Path
+    $comFolga  = $Required * (1 + ($MarginPercent / 100))
+
+    [pscustomobject]@{
+        Caminho       = $Path
+        LivreGB       = if ($null -ne $livre) { [math]::Round($livre / 1GB, 2) } else { $null }
+        NecessarioGB  = [math]::Round($comFolga / 1GB, 2)
+        FaltaGB       = if ($null -ne $livre) { [math]::Round([math]::Max(0, $comFolga - $livre) / 1GB, 2) } else { $null }
+        # Sem leitura de espaco, nao bloqueia: so avisa e deixa seguir.
+        Ok            = ($null -eq $livre) -or ($livre -ge $comFolga)
+        Medido        = ($null -ne $livre)
+    }
+}
+
+function Assert-VwfSpace {
+    <#
+    .SYNOPSIS
+        Interrompe a operacao se nao houver espaco suficiente no destino.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][double]$Required,
+        [string]$Operacao = 'a operacao',
+        [switch]$IgnoreSpace
+    )
+
+    $esp = Test-VwfSpace -Path $Path -Required $Required
+
+    if (-not $esp.Medido) {
+        Write-Warning 'Espaco livre nao pode ser medido; seguindo sem verificar.'
+        return $esp
+    }
+
+    $msg = "{0}: precisa de ~{1} GB (com folga), ha {2} GB livres em {3}" -f
+           $Operacao, $esp.NecessarioGB, $esp.LivreGB, [System.IO.Path]::GetPathRoot($Path)
+
+    if ($esp.Ok) {
+        Write-Host "Espaco OK - $msg." -ForegroundColor DarkGray
+        return $esp
+    }
+
+    if ($IgnoreSpace) {
+        Write-Warning "$msg. Faltam ~$($esp.FaltaGB) GB. Prosseguindo por causa de -IgnoreSpace."
+        return $esp
+    }
+
+    throw "Espaco insuficiente. $msg. Faltam ~$($esp.FaltaGB) GB. Libere espaco ou use -IgnoreSpace."
+}
+
 function Test-VwfFileReady {
     <#
     .SYNOPSIS
@@ -345,6 +435,7 @@ function Import-VwfCard {
         [string[]]$Numero,
         [switch]$DeleteSource,
         [switch]$CleanJunk,
+        [switch]$IgnoreSpace,
         [switch]$Force
     )
 
@@ -362,6 +453,16 @@ function Import-VwfCard {
     $clips = Get-VwfCardClips -Source $card.Source
     if ($Numero) { $clips = $clips | Where-Object Numero -in $Numero }
     if (-not $clips) { Write-Warning 'Nenhum video encontrado no cartao.'; return }
+
+    # Soma apenas o que sera realmente escrito (ignora o que ja esta no destino).
+    $aEscrever = $clips | Where-Object {
+        $Force -or -not (Test-Path -LiteralPath (Join-Path $work "$($_.Tag)_$($_.Numero).MP4"))
+    }
+    if ($aEscrever) {
+        $bytes = ($aEscrever.Partes | Measure-Object Length -Sum).Sum
+        Assert-VwfSpace -Path $work -Required $bytes -IgnoreSpace:$IgnoreSpace `
+            -Operacao "Importar $($aEscrever.Count) video(s) do cartao $($card.Tag)" | Out-Null
+    }
 
     foreach ($clip in $clips) {
         $destino = Join-Path $work "$($clip.Tag)_$($clip.Numero).MP4"
@@ -424,6 +525,7 @@ function Invoke-VwfStabilize {
         [int]$Parallel = 1,
         [string[]]$OutParams,
         [switch]$DeleteSource,
+        [switch]$IgnoreSpace,
         [switch]$Force
     )
 
@@ -449,6 +551,12 @@ function Invoke-VwfStabilize {
 
     Write-Host "Estabilizando $($pendentes.Count) video(s):" -ForegroundColor Cyan
     $pendentes.Name | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+
+    # O render do Gyroflow costuma sair perto do tamanho da entrada; o fator do
+    # config ajusta isso (bitrate alto pode passar do original).
+    $bytes = (($pendentes | Measure-Object Length -Sum).Sum) * $cfg.StabSizeFactor
+    Assert-VwfSpace -Path $work -Required $bytes -IgnoreSpace:$IgnoreSpace `
+        -Operacao "Estabilizar $($pendentes.Count) video(s)" | Out-Null
 
     if (-not $PSCmdlet.ShouldProcess("$($pendentes.Count) video(s) em $work", 'Gyroflow')) { return }
 
@@ -519,6 +627,7 @@ function Join-VwfStabilized {
         [string[]]$Order,
         [string]$Name,
         [switch]$DeleteSource,
+        [switch]$IgnoreSpace,
         [switch]$Force
     )
 
@@ -546,6 +655,9 @@ function Join-VwfStabilized {
         $ini = Get-VwfCreationTime $f.FullName
         Write-Host ("  {0,2}. {1}  (gravado {2:yyyy-MM-dd HH:mm} UTC)" -f $i++, $f.Name, $ini) -ForegroundColor Gray
     }
+
+    Assert-VwfSpace -Path $Project -Required (($lista | Measure-Object Length -Sum).Sum) `
+        -IgnoreSpace:$IgnoreSpace -Operacao 'Juncao final' | Out-Null
 
     if (-not $PSCmdlet.ShouldProcess($destino, "Unir $($lista.Count) video(s)")) { return }
 
@@ -580,6 +692,7 @@ function Compress-VwfVideo {
         [Parameter(ParameterSetName = 'Project')][string]$Name,
         [Parameter(Mandatory, ParameterSetName = 'File')][string]$Path,
         [Alias('Profile')][string]$ProfileName = 'R4',
+        [switch]$IgnoreSpace,
         [switch]$Force
     )
 
@@ -599,6 +712,20 @@ function Compress-VwfVideo {
     $destino = Join-Path $src.DirectoryName "$($src.BaseName)$($perfil.Suffix).mp4"
 
     if ((Test-Path -LiteralPath $destino) -and -not $Force) { throw "Ja existe: $destino (use -Force)" }
+
+    # Estimativa pela duracao x bitrate do perfil, quando ha bitrate definido;
+    # caso contrario (CRF), usa uma fracao do original.
+    $idx = [array]::IndexOf($perfil.Args, '-b:v')
+    $estimado = if ($idx -ge 0) {
+        $mbps = [double](($perfil.Args[$idx + 1]) -replace '[^\d.]', '')
+        $dur  = Get-VwfDuration $src.FullName
+        if ($dur) { ($mbps * 1MB / 8) * $dur * 1.15 } else { $src.Length * 0.35 }
+    } else {
+        $src.Length * 0.35
+    }
+    Assert-VwfSpace -Path $src.DirectoryName -Required $estimado -IgnoreSpace:$IgnoreSpace `
+        -Operacao "Compactar com perfil $ProfileName" | Out-Null
+
     if (-not $PSCmdlet.ShouldProcess($destino, "Compactar com perfil $ProfileName")) { return }
 
     $ffArgs = @('-hide_banner', '-y', '-i', $src.FullName) + $perfil.Args + @($destino)
@@ -678,6 +805,8 @@ function Get-VwfStatus {
         $estab  = Get-ChildItem -LiteralPath $work -File -Filter "*$sufixo.mp4"
     } else { $unidos = @(); $estab = @() }
 
+    $livre = Get-VwfFreeSpace -Path $Project
+
     [pscustomobject]@{
         Projeto      = $nome
         Unidos       = $unidos.Count
@@ -685,6 +814,7 @@ function Get-VwfStatus {
         Master       = Test-Path -LiteralPath (Join-Path $Project "$nome.mp4")
         Compactados  = (Get-ChildItem -LiteralPath $Project -File -Filter "$nome*_*.mp4" -ErrorAction SilentlyContinue).Count
         TamanhoWorkGB = if ($unidos -or $estab) { [math]::Round(((@($unidos) + @($estab)) | Measure-Object Length -Sum).Sum / 1GB, 2) } else { 0 }
+        LivreGB      = if ($null -ne $livre) { [math]::Round($livre / 1GB, 2) } else { $null }
     }
 }
 
@@ -708,5 +838,6 @@ Export-ModuleMember -Function @(
     'Get-VwfTimeline', 'Join-VwfStabilized',
     'Compress-VwfVideo', 'Remove-VwfMaster',
     'Get-VwfStatus', 'Get-VwfDuration', 'Get-VwfCreationTime',
+    'Get-VwfFreeSpace', 'Test-VwfSpace', 'Assert-VwfSpace',
     'Test-VwfMerge', 'Write-VwfMergeCheck', 'Test-VwfFileReady', 'Write-VwfElapsed'
 )

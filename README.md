@@ -55,6 +55,9 @@ Remove-VwfMaster -Project $proj -RemoveWork
 
 Todo comando destrutivo aceita `-WhatIf` para simular.
 
+Vídeos de uma parte só são tratados: o módulo copia direto para `work` com o
+nome ajustado, sem chamar o `mp4_merge`. A verificação pós-cópia é a mesma.
+
 ## Estrutura de pastas
 
 ```
@@ -84,6 +87,36 @@ abas: unir o cartão 2 em uma enquanto a outra estabiliza o cartão 1.
 `Invoke-VwfStabilize` ignora arquivos que ainda estão abertos por outro
 processo, então não pega um merge pela metade. Para render paralelo dentro de
 uma chamada só, use `-Parallel 2` (disputa GPU — meça antes de subir).
+
+## Espaço em disco
+
+Cada etapa que escreve arquivo grande confere o espaço livre do destino antes
+de começar e aborta com mensagem clara se não couber:
+
+```
+Espaco insuficiente. Importar 4 video(s) do cartao S5A: precisa de ~31,2 GB
+(com folga), ha 18,4 GB livres em D:\. Faltam ~12,8 GB.
+```
+
+A estimativa é feita assim:
+
+| Etapa | Base da estimativa |
+|---|---|
+| `Import-VwfCard` | soma das partes que serão escritas (pula o que já existe) |
+| `Invoke-VwfStabilize` | soma das entradas × `StabSizeFactor` |
+| `Join-VwfStabilized` | soma dos estabilizados |
+| `Compress-VwfVideo` | duração × bitrate do perfil (ou 35% do original, em perfis CRF) |
+
+Sobre tudo isso incide a folga de `SpaceMarginPercent` (10% por padrão). Os dois
+ficam no config. Se o seu preset do Gyroflow gerar saída bem maior que a
+entrada, suba o `StabSizeFactor`.
+
+Para forçar mesmo assim, todos esses comandos aceitam `-IgnoreSpace` (avisa e
+segue). E `Get-VwfStatus` mostra o espaço livre junto com o resto:
+
+```powershell
+Get-VwfStatus -Project $proj
+```
 
 ## Verificação
 

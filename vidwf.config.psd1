@@ -39,6 +39,13 @@
         SizePercent   = 0.5
     }
 
+    # Folga exigida, em %, sobre o espaco estimado para cada etapa.
+    SpaceMarginPercent = 10
+
+    # Quanto a saida do Gyroflow costuma ocupar em relacao a entrada.
+    # Ajuste conforme o bitrate do seu preset (1.0 = mesmo tamanho).
+    StabSizeFactor = 1.1
+
     # Perfis de compactacao para o arquivo morto.
     Compression = @{
         R4 = @{
