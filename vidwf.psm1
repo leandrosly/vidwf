@@ -1371,13 +1371,11 @@ function Remove-VwfMaster {
 
     $cfg = Get-VwfConfig
     if (-not $Name) { $Name = Split-Path $Project -Leaf }
-    $m = Get-VwfMaster -Project $Project -Name $Name
-
-    if (-not $m) { Write-Warning "Master nao encontrado em $Project (procurei por '$Name.*')."; return }
+    $m      = Get-VwfMaster -Project $Project -Name $Name
     $master = $m.FullName
 
-    $compactados = Get-ChildItem -LiteralPath $Project -File -Filter "$Name*_*.*" |
-        Where-Object { $_.FullName -ne $master }
+    $compactados = @(Get-ChildItem -LiteralPath $Project -File -Filter "$Name*_*.*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -ne $master })
 
     if (-not $compactados) {
         Write-Warning 'Nenhuma copia compactada encontrada na pasta. Abortando por seguranca.'
@@ -1386,15 +1384,58 @@ function Remove-VwfMaster {
 
     Write-Host 'Copia(s) compactada(s) encontrada(s):' -ForegroundColor Cyan
     $compactados | ForEach-Object { Write-Host ("  {0} ({1:n2} GB)" -f $_.Name, ($_.Length / 1GB)) -ForegroundColor Gray }
-    Write-Host 'Confirme que o video ja esta no YouTube antes de prosseguir.' -ForegroundColor Yellow
 
-    if ($PSCmdlet.ShouldProcess($master, 'Remover master')) {
-        Remove-Item -LiteralPath $master -Force
+    if ($m) {
+        Write-Host 'Confirme que o video ja esta no YouTube antes de prosseguir.' -ForegroundColor Yellow
+        if ($PSCmdlet.ShouldProcess($master, 'Remover master')) {
+            Remove-Item -LiteralPath $master -Force
+        }
+    } else {
+        # Master ja removido antes: nao e motivo para abortar o resto, senao
+        # uma limpeza interrompida no meio nao tem como ser concluida.
+        Write-Host "Master ja nao existe em $Project; seguindo." -ForegroundColor DarkGray
     }
-    if ($RemoveWork) {
-        $work = Join-Path $Project $cfg.WorkDir
-        if ((Test-Path -LiteralPath $work) -and $PSCmdlet.ShouldProcess($work, 'Remover pasta work')) {
-            Remove-Item -LiteralPath $work -Recurse -Force
+
+    if ($RemoveWork) { Remove-VwfWorkDir -Project $Project }
+}
+
+function Remove-VwfWorkDir {
+    <#
+    .SYNOPSIS
+        Remove a pasta work do projeto.
+    .DESCRIPTION
+        Se o diretorio atual do console estiver dentro de work, o Windows nao
+        deixa remover a pasta ("esta em uso") e a limpeza fica pela metade. Por
+        isso sai de la antes, indo para a pasta do projeto.
+    #>
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+    param([Parameter(Mandatory)][string]$Project)
+
+    $cfg  = Get-VwfConfig
+    $work = Join-Path $Project $cfg.WorkDir
+
+    if (-not (Test-Path -LiteralPath $work)) {
+        Write-Host 'Pasta work ja nao existe.' -ForegroundColor DarkGray
+        return
+    }
+
+    $workCheio = (Resolve-Path -LiteralPath $work).Path
+    $atual     = (Get-Location).Path
+    if ($atual -eq $workCheio -or $atual.StartsWith($workCheio + [System.IO.Path]::DirectorySeparatorChar)) {
+        Write-Host "Saindo de $($cfg.WorkDir) para poder remove-la." -ForegroundColor DarkGray
+        Set-Location -LiteralPath $Project
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($work, 'Remover pasta work')) { return }
+
+    try {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Stop
+        Write-Host 'Pasta work removida.' -ForegroundColor DarkGray
+    } catch {
+        $restou = @(Get-ChildItem -LiteralPath $work -Recurse -ErrorAction SilentlyContinue)
+        Write-Warning "Nao foi possivel remover $($cfg.WorkDir): $($_.Exception.Message)"
+        if ($restou) {
+            Write-Warning "Ainda ha $($restou.Count) item(ns) la dentro. Feche quem estiver usando a pasta e rode: Remove-VwfWorkDir -Project `$proj"
         }
     }
 }
@@ -1455,7 +1496,7 @@ Export-ModuleMember -Function @(
     'Invoke-VwfStabilize', 'Get-VwfStabilizedOutput', 'Remove-VwfStabilizedSources',
     'Show-VwfPresetPaths', 'New-VwfCleanPreset',
     'Get-VwfTimeline', 'Join-VwfStabilized',
-    'Compress-VwfVideo', 'Remove-VwfMaster',
+    'Compress-VwfVideo', 'Remove-VwfMaster', 'Remove-VwfWorkDir',
     'Get-VwfStatus', 'Get-VwfDuration', 'Get-VwfCreationTime', 'Get-VwfFrameRate',
     'Get-VwfFreeSpace', 'Test-VwfSpace', 'Assert-VwfSpace',
     'Test-VwfMerge', 'Write-VwfMergeCheck', 'Test-VwfFileReady', 'Write-VwfElapsed'

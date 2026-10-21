@@ -55,6 +55,16 @@ Remove-VwfMaster -Project $proj -RemoveWork
 
 Todo comando destrutivo aceita `-WhatIf` para simular.
 
+`Remove-VwfMaster` exige que exista uma cópia compactada na pasta e, se o master
+já tiver sido apagado numa tentativa anterior, segue em frente com o resto da
+limpeza em vez de abortar. A remoção do `work` é um comando próprio, que pode
+ser chamado sozinho e sai da pasta antes de removê-la (estar dentro dela pelo
+prompt faz o Windows recusar a remoção):
+
+```powershell
+Remove-VwfWorkDir -Project $proj
+```
+
 Vídeos de uma parte só são tratados: o módulo copia direto para `work` com o
 nome ajustado, sem chamar o `mp4_merge`. A verificação pós-cópia é a mesma.
 
