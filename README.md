@@ -58,6 +58,176 @@ Todo comando destrutivo aceita `-WhatIf` para simular.
 Vídeos de uma parte só são tratados: o módulo copia direto para `work` com o
 nome ajustado, sem chamar o `mp4_merge`. A verificação pós-cópia é a mesma.
 
+O `-DeleteSource` do `Invoke-VwfStabilize` não depende de ter renderizado
+naquela execução: se os `_stabilized` já existiam de uma rodada anterior, ele
+limpa os unidos correspondentes mesmo assim. Para fazer só a limpeza:
+
+```powershell
+Remove-VwfStabilizedSources -Project $proj -WhatIf   # tire o -WhatIf para valer
+```
+
+### Onde fica o preset
+
+Os presets ficam em `presets/`, versionados junto com o módulo. `Paths.Preset`
+aceita caminho relativo, resolvido a partir da pasta do `vidwf.config.psd1`:
+
+```powershell
+Preset = 'presets/session5_superview_1080p_60fps.gyroflow'
+```
+
+O nome segue `<câmera>_<lente>_<resolução>_<fps>`, porque cada um desses campos
+muda o preset: a lente vem do perfil de calibração, que é específico do modelo
+da câmera, e o fps determina o rolling shutter. Vizinhos previstos:
+`session5_superview_1080p_30fps.gyroflow`, `session5_wide_1080p_60fps.gyroflow`.
+
+Para usar outro preset em uma execução específica, sem mexer no config:
+
+```powershell
+Invoke-VwfStabilize -Project $proj -Preset 'D:\...\outro.gyroflow'
+```
+
+## HiLight tags
+
+As HiLight tags (botão/voz na câmera) ficam em `/moov/udta/HMMT` — uma caixa de
+metadados, **não** uma trilha. Por isso:
+
+- a estabilização no Gyroflow não as leva junto;
+- o `mp4_merge` só herda os metadados do **primeiro** capítulo, então as tags de
+  `GP01`, `GP02`… se perderiam na união;
+- `preserve_other_tracks` no preset não resolve, porque preserva trilhas.
+
+O módulo cuida disso sozinho. No `Import-VwfCard`, enquanto os arquivos do
+cartão ainda existem, ele lê as tags de **cada parte**, desloca pela duração
+acumulada das anteriores e grava um sidecar ao lado do unido:
+
+```
+work\S5C_0067.hilights.json
+```
+
+No `Join-VwfStabilized`, os sidecars são consolidados na mesma ordem da junção
+(cada clipe deslocado pela sua posição no vídeo final), gravados como
+`<projeto>.hilights.json` e escritos **de volta no master como capítulos**, que
+é o que aparece na linha do tempo do player.
+
+Os capítulos são gravados com `-codec copy` (sem reencodar) e o original só é
+substituído depois de conferida a duração. Não são a box `HMMT` original — o
+ffmpeg não a escreve — mas cumprem a mesma função e são lidos por mais
+programas. Um capítulo "Inicio" em 0 é sempre incluído, porque o muxer do ffmpeg
+força o primeiro capítulo para o começo do arquivo; sem ele, a primeira HiLight
+seria puxada para 0.
+
+Para gravar capítulos num arquivo avulso:
+
+```powershell
+Add-VwfChapters -Path 'D:\...\video.mp4'                  # usa video.hilights.json
+Add-VwfChapters -Path '...' -Highlights '...' -OutFile '...'   # sem substituir
+```
+
+Para só ler as tags de um arquivo GoPro:
+
+```powershell
+Get-VwfHighlights -Path 'F:\DCIM\100GOPRO\GOPR0067.MP4'
+```
+
+`-NoHighlights` desliga a extração no import e a gravação na junção.
+
+### Extensão da saída e `preserve_other_tracks`
+
+A saída normal é `.mp4`. Com `preserve_other_tracks: true` no preset, o Gyroflow
+grava `.mov`: a trilha GPMF é um stream de dados (`gpmd`/`bin_data`), que o
+muxer MP4 do ffmpeg recusa e o MOV aceita.
+
+**O preset vem com essa opção desligada, de propósito.** Na Session 5 o GPMF só
+traz giroscópio, acelerômetro e temperatura (ela não tem GPS), e o giro só
+serviria para re-estabilizar, o que não se faz a partir de um arquivo já
+estabilizado. Além disso, ela **não** preserva as HiLight tags: elas ficam em
+`/moov/udta/HMMT`, uma caixa de metadados, não uma trilha — por isso o
+marcador some do player mesmo com a opção ligada.
+
+Mesmo assim, o módulo não assume extensão em lugar nenhum: procura por padrão
+(`*_stabilized.*`) e o master herda a extensão dos estabilizados. Se houver
+`.mov` e `.mp4` misturados no `work`, `Join-VwfStabilized` recusa em vez de
+juntar contêineres diferentes.
+
+### Por que `Start-Process -Wait`
+
+O Gyroflow é um aplicativo de GUI. Chamado direto (`& Gyroflow ...`), o
+PowerShell devolve o prompt imediatamente e o render continua solto em segundo
+plano — a conferência das saídas rodaria antes de existirem, e nada seria
+removido. O sintoma é `Estabilizacao: 0 h, 0 min e 0 seg` seguido de avisos de
+"sem estabilizado valido", com os logs do Gyroflow aparecendo depois do prompt.
+
+Por isso o módulo chama o Gyroflow com `Start-Process -Wait`, citando os
+argumentos manualmente (os caminhos têm espaços e acentos).
+
+### Saída do Gyroflow no terminal
+
+Por padrão o módulo não passa `--stdout-progress`: ele duplica o progresso em
+milhares de linhas e enterra qualquer aviso. O resultado de cada vídeo sai em
+um bloco no fim, depois do ruído do render. Para o modo verborrágico,
+`Invoke-VwfStabilize -StdoutProgress`.
+
+### Taxa de quadros e rolling shutter
+
+O preset fixa o tempo de rolling shutter, e esse valor depende do fps: o
+controle na GUI vai de 0 até a duração do quadro, então 60p permite no máximo
+16,68 ms e 30p, 33,37 ms. Um preset de 60p aplicado a footage de 30p
+subcorrige o rolling shutter pela metade.
+
+Por isso o preset tem a taxa no nome, e o módulo confere: antes de estabilizar,
+lê o fps de cada arquivo e separa os que não batem com `ExpectedFps` do config.
+
+```
+AVISO: S5B_0071.MP4: 29,97 fps, esperado 59,94. Fora desta rodada - use
+-Preset com um preset dessa taxa, ou -IgnoreFps.
+```
+
+Para processá-los, rode de novo com o preset certo:
+
+```powershell
+Invoke-VwfStabilize -Project $proj -Preset '...\preset_session5_fullhd_30fps.gyroflow' -ExpectedFps 29.97
+```
+
+`ExpectedFps = 0` no config desliga a conferência; `-IgnoreFps` ignora só naquela execução.
+
+### Preset e pasta de saída
+
+Um preset salvo pela GUI com todas as opções marcadas carrega junto a **pasta de
+saída em uso naquele momento**. Depois disso, todo render feito com ele cai
+naquela pasta — não importa onde está a entrada nem em que diretório o prompt
+está, então `cd` não resolve. Isso reaparece toda vez que você regrava o preset.
+
+O módulo contorna sozinho: antes de chamar o Gyroflow, ele gera uma cópia
+temporária do preset sem as chaves de caminho e usa essa cópia. O preset
+original não é alterado. Quando remove algo, avisa:
+
+```
+Preset: removidos 1 caminho(s) de saida para esta execucao:
+  output.output_folder = D:/Pictures/Câmeras/2026/2026.10.20 - Até o ginásio de mono
+```
+
+Para ver o que o preset carrega, sem mexer em nada:
+
+```powershell
+Show-VwfPresetPaths
+```
+
+Para desligar a limpeza e usar o preset como está, `Invoke-VwfStabilize -RawPreset`.
+
+### Refazer a estabilização com outro preset
+
+Se o preset mudou, as saídas antigas continuam no `work` e nada no nome delas
+indica com qual preset foram feitas. Apague antes de rodar de novo, em vez de
+usar `-Force`, para não misturar versões:
+
+```powershell
+Get-ChildItem $work -Filter '*_stabilized.*' | Remove-Item -Verbose
+Invoke-VwfStabilize -Project $proj -DeleteSource
+```
+
+Um unido só é removido se houver um estabilizado correspondente que exista, não
+esteja vazio e não esteja sendo escrito por outro processo.
+
 ## Estrutura de pastas
 
 ```
@@ -108,8 +278,9 @@ A estimativa é feita assim:
 | `Compress-VwfVideo` | duração × bitrate do perfil (ou 35% do original, em perfis CRF) |
 
 Sobre tudo isso incide a folga de `SpaceMarginPercent` (10% por padrão). Os dois
-ficam no config. Se o seu preset do Gyroflow gerar saída bem maior que a
-entrada, suba o `StabSizeFactor`.
+ficam no config. O `StabSizeFactor` está em 1.05: medido no preset atual, a
+saída do Gyroflow fica ~0,2% maior que a entrada. Se mudar o bitrate do preset,
+compare um `_stabilized` com a entrada e ajuste.
 
 Para forçar mesmo assim, todos esses comandos aceitam `-IgnoreSpace` (avisa e
 segue). E `Get-VwfStatus` mostra o espaço livre junto com o resto:

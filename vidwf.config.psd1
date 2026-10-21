@@ -7,10 +7,12 @@
         FFprobe  = 'ffprobe'
     }
 
+    # Caminhos relativos sao resolvidos a partir da pasta deste arquivo,
+    # entao o preset pode ficar versionado junto com o modulo.
     Paths = @{
         DefaultSource = 'F:\DCIM\100GOPRO'
         ProjectsRoot  = 'D:\Pictures\Câmeras\2026'
-        Preset        = 'C:\Users\Leandro Serra Acosta\Downloads\Gyroflow-windows64\gyroflow-gopro-session5-presset.gyroflow'
+        Preset        = 'presets/session5_superview_1080p_60fps.gyroflow'
     }
 
     # Rotulo do volume do cartao -> tag curta da camera.
@@ -39,12 +41,18 @@
         SizePercent   = 0.5
     }
 
+    # Taxa de quadros esperada das cameras. O preset fixa o rolling shutter em
+    # funcao do fps, entao arquivo em outra taxa sai com correcao errada: o
+    # modulo separa esses e avisa. 0 desliga a conferencia.
+    ExpectedFps = 59.94
+
     # Folga exigida, em %, sobre o espaco estimado para cada etapa.
     SpaceMarginPercent = 10
 
     # Quanto a saida do Gyroflow costuma ocupar em relacao a entrada.
-    # Ajuste conforme o bitrate do seu preset (1.0 = mesmo tamanho).
-    StabSizeFactor = 1.1
+    # Medido no preset atual: ~1.002 (saida 0,2% maior que a entrada).
+    # Ajuste se mudar o bitrate do preset.
+    StabSizeFactor = 1.05
 
     # Perfis de compactacao para o arquivo morto.
     Compression = @{

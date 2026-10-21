@@ -1,0 +1,204 @@
+{
+    "background_color": [
+        0.06666667014360428,
+        0.06666667014360428,
+        0.06666667014360428,
+        1
+    ],
+    "background_margin": 0,
+    "background_margin_feather": 0,
+    "background_mode": 0,
+    "calibration_data": {
+        "asymmetrical": false,
+        "calib_dimension": {
+            "h": 1080,
+            "w": 1920
+        },
+        "calibrated_by": "Eddy",
+        "calibrator_version": "1.4.2",
+        "camera_brand": "GoPro",
+        "camera_model": "HERO5 Session",
+        "camera_setting": "",
+        "compatible_settings": [
+        ],
+        "crop": null,
+        "crop_factor": null,
+        "date": "2023-02-14",
+        "digital_lens": "gopro_superview",
+        "digital_lens_params": null,
+        "distortion_model": null,
+        "fisheye_params": {
+            "RMS_error": 0.7529017391725531,
+            "camera_matrix": [
+                [
+                    618.4158739059599,
+                    0,
+                    725.6379307269939
+                ],
+                [
+                    0,
+                    619.3278835270454,
+                    542.8070705358942
+                ],
+                [
+                    0,
+                    0,
+                    1
+                ]
+            ],
+            "distortion_coeffs": [
+                0.12748188244021216,
+                -0.060689342895118265,
+                0.015992340823867475,
+                0.0008021430251371082
+            ],
+            "radial_distortion_limit": null
+        },
+        "focal_length": null,
+        "fps": 29.97,
+        "frame_readout_direction": null,
+        "frame_readout_time": 33.36667,
+        "global_shutter": false,
+        "gyro_lpf": null,
+        "identifier": "gopro-hero5session-super-1920x1080@29970-no-eis",
+        "input_horizontal_stretch": 1,
+        "input_vertical_stretch": 1,
+        "interpolations": null,
+        "lens_model": "Superview",
+        "name": "GoPro_HERO5 Session_Wide_4by3",
+        "note": "",
+        "num_images": 15,
+        "official": true,
+        "orig_dimension": {
+            "h": 1080,
+            "w": 1440
+        },
+        "output_dimension": {
+            "h": 808,
+            "w": 1440
+        },
+        "sync_settings": {
+            "do_autosync": true,
+            "every_nth_frame": 1,
+            "initial_offset": 0,
+            "initial_offset_inv": false,
+            "max_sync_points": 5,
+            "search_size": 0.5,
+            "time_per_syncpoint": 0.5
+        }
+    },
+    "gyro_source": {
+        "acc_rotation": null,
+        "gyro_bias": null,
+        "imu_orientation": "XYZ",
+        "integration_method": 2,
+        "lpf": 0,
+        "mf": 0,
+        "rotation": null
+    },
+    "light_refraction_coefficient": 1,
+    "muted": false,
+    "name": "session5_superview_1080p_60fps",
+    "output": {
+        "audio": true,
+        "audio_codec": "AAC",
+        "bitrate": 43,
+        "codec": "H.265/HEVC",
+        "codec_options": "",
+        "encoder_options": "",
+        "export_trims_separately": false,
+        "interpolation": "Lanczos4",
+        "keyframe_distance": 1,
+        "metadata": {
+            "comment": ""
+        },
+        "output_filename": "",
+        "output_height": 1080,
+        "output_width": 1920,
+        "pad_with_black": false,
+        "preserve_other_tracks": false,
+        "use_gpu": true
+    },
+    "playback_speed": 1,
+    "stabilization": {
+        "adaptive_zoom_center_offset": [
+            0,
+            0
+        ],
+        "adaptive_zoom_method": 1,
+        "adaptive_zoom_window": 4,
+        "additional_rotation": [
+            0,
+            0,
+            0
+        ],
+        "additional_translation": [
+            0,
+            0,
+            0
+        ],
+        "fov": 1,
+        "frame_readout_direction": "TopToBottom",
+        "frame_readout_time": 16.683322183313006,
+        "horizon_lock_amount": 100,
+        "horizon_lock_roll": 0,
+        "lens_correction_amount": 0.9,
+        "max_zoom": 120,
+        "max_zoom_iterations": 5,
+        "method": "Default",
+        "smoothing_params": [
+            {
+                "name": "smoothness",
+                "value": 0.5
+            },
+            {
+                "name": "smoothness_pitch",
+                "value": 0.5
+            },
+            {
+                "name": "smoothness_yaw",
+                "value": 0.5
+            },
+            {
+                "name": "smoothness_roll",
+                "value": 0.5
+            },
+            {
+                "name": "per_axis",
+                "value": 0
+            },
+            {
+                "name": "trim_range_only",
+                "value": 1
+            },
+            {
+                "name": "max_smoothness",
+                "value": 1
+            },
+            {
+                "name": "alpha_0_1s",
+                "value": 0.1
+            }
+        ],
+        "use_gravity_vectors": false,
+        "video_speed": 1,
+        "video_speed_affects_smoothing": true,
+        "video_speed_affects_zooming": true,
+        "video_speed_affects_zooming_limit": true
+    },
+    "synchronization": {
+        "auto_sync_points": false,
+        "calc_initial_fast": false,
+        "do_autosync": true,
+        "every_nth_frame": 1,
+        "initial_offset": 0,
+        "initial_offset_inv": false,
+        "max_sync_points": 5,
+        "of_method": 2,
+        "offset_method": 2,
+        "pose_method": 0,
+        "search_size": 0.5,
+        "time_per_syncpoint": 0.5
+    },
+    "version": 2
+}
