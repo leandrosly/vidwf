@@ -4,11 +4,67 @@ Módulo PowerShell para o workflow de vídeo das câmeras de ação (GoPro Sessi
 e, futuramente, Insta360 X4): unir capítulos → estabilizar no Gyroflow → juntar
 tudo em um master → compactar para arquivo morto.
 
-Requer PowerShell 7+.
+## Requisitos
+
+- **PowerShell 7+** (veja abaixo)
+- [Gyroflow](https://gyroflow.xyz/) — estabilização
+- [mp4_merge](https://github.com/gyroflow/mp4-merge/releases) — união sem reencodar
+- **ffmpeg** e **ffprobe** — compactação, duração, fps, capítulos
+
+Os quatro podem estar no `PATH` ou ter o caminho completo no config.
+
+### PowerShell 7
+
+O módulo exige PowerShell 7. O Windows traz o **Windows PowerShell 5.1**, que é
+outro programa: o 7 instala ao lado, sem substituir nada. O comando do 5.1
+continua sendo `powershell`; o do 7 é `pwsh`.
+
+Para ver o que você tem:
+
+```powershell
+$PSVersionTable.PSVersion
+```
+
+Se for 5.x, instale o 7:
+
+```powershell
+winget install --id Microsoft.PowerShell --source winget
+```
+
+Feche e abra o terminal. No Windows Terminal aparece um perfil novo, chamado
+"PowerShell" (o antigo é "Windows PowerShell"); dá para defini-lo como padrão
+nas configurações.
+
+Sem o 7, o `Import-Module` falha com uma mensagem sobre a instrução `#requires`.
+Não vale a pena tentar rodar no 5.1: ele lê arquivos sem BOM como ANSI, e
+caminhos com acento (`D:\Pictures\Câmeras\…`) chegariam corrompidos.
+
+### Política de execução
+
+Numa instalação nova, o PowerShell recusa scripts. A política é guardada por
+versão, então o 7 precisa da sua, mesmo que o 5.1 já esteja liberado:
+
+```powershell
+Get-ExecutionPolicy -List
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+`RemoteSigned` permite scripts locais e exige assinatura só nos baixados da
+internet. **Arquivos baixados pelo navegador vêm marcados como "da internet" e
+são recusados mesmo assim** — isso reaparece a cada download de uma versão nova:
+
+```powershell
+Get-ChildItem 'D:\Documents\Projetos\Video Workflow\' -Recurse | Unblock-File
+```
+
+Atualizar por `git pull` não marca nada, então o problema só existe ao baixar
+pelo navegador. Se `Get-ExecutionPolicy -List` mostrar algo definido em
+`MachinePolicy` ou `UserPolicy`, é GPO e o `Set-ExecutionPolicy` não vence;
+nesse caso abra o terminal com `pwsh -ExecutionPolicy Bypass`.
 
 ## Instalação
 
-1. Coloque `vidwf.psm1` e `vidwf.config.psd1` na mesma pasta.
+1. Coloque `vidwf.psm1`, `vidwf.config.psd1` e a pasta `presets/` na mesma pasta.
 2. Ajuste `vidwf.config.psd1` (caminhos das ferramentas, preset, pastas).
 3. Importe:
 
@@ -23,7 +79,7 @@ Para não digitar o import toda vez, acrescente a linha ao seu `$PROFILE`.
 
 O módulo identifica a câmera pelo **rótulo do volume** do cartão. É isso que
 evita que `GOPR0055` de duas Session 5 diferentes se sobrescrevam no destino.
-Renomeie cada cartão uma única vez (no Explorer ou via `label F: GPS5-01`) e
+Renomeie cada cartão uma única vez (no Explorer ou via `label F: GPS5C`) e
 registre o mapa em `Cameras` no config. Cartão fora do mapa gera aviso e usa o
 próprio rótulo como tag.
 
