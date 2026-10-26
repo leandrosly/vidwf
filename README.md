@@ -215,6 +215,23 @@ Mesmo assim, o módulo não assume extensão em lugar nenhum: procura por padrã
 `.mov` e `.mp4` misturados no `work`, `Join-VwfStabilized` recusa em vez de
 juntar contêineres diferentes.
 
+### Um vídeo só
+
+Tanto na importação quanto na junção final, quando há **um único arquivo** o
+módulo copia em vez de chamar o `mp4_merge`. Além de ser mais rápido, evita uma
+reescrita desnecessária das tabelas `stbl`: um master gerado assim já apareceu
+com escala de tempo que o VirtualDub2 lê errado (mostrava ~22 h em vez de
+22 min — a contagem de quadros interpretada como segundos), embora MPC-HC e VLC,
+baseados em ffmpeg, mostrassem a duração correta.
+
+Para inspecionar um arquivo suspeito:
+
+```powershell
+ffprobe -v error -select_streams v:0 `
+  -show_entries stream=time_base,r_frame_rate,avg_frame_rate,nb_frames,duration `
+  -show_entries format=duration -of default=noprint_wrappers=1 "arquivo.mp4"
+```
+
 ### Por que `Start-Process -Wait`
 
 O Gyroflow é um aplicativo de GUI. Chamado direto (`& Gyroflow ...`), o

@@ -1240,8 +1240,16 @@ function Join-VwfStabilized {
     if (-not $PSCmdlet.ShouldProcess($destino, "Unir $($lista.Count) video(s)")) { return }
 
     $inicio = Get-Date
-    & $cfg.Tools.Mp4Merge $lista.FullName --out $destino
-    if ($LASTEXITCODE -ne 0) { Write-Error 'mp4_merge falhou na juncao final.'; return }
+    if ($lista.Count -eq 1) {
+        # Com um arquivo so nao ha o que juntar, e passar pelo mp4_merge reescreve
+        # as tabelas stbl a toa - ja produziu arquivo com escala de tempo que
+        # parsers menos tolerantes (VirtualDub2) leem errado. Copia direto.
+        Write-Host 'Um video so: copiando em vez de passar pelo mp4_merge.' -ForegroundColor DarkGray
+        Copy-Item -LiteralPath $lista[0].FullName -Destination $destino -Force
+    } else {
+        & $cfg.Tools.Mp4Merge $lista.FullName --out $destino
+        if ($LASTEXITCODE -ne 0) { Write-Error 'mp4_merge falhou na juncao final.'; return }
+    }
     Write-VwfElapsed -Inicio $inicio -Rotulo 'Juncao final'
 
     $check = Test-VwfMerge -Result $destino -Parts $lista
