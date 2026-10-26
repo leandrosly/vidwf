@@ -215,6 +215,38 @@ Mesmo assim, o módulo não assume extensão em lugar nenhum: procura por padrã
 `.mov` e `.mp4` misturados no `work`, `Join-VwfStabilized` recusa em vez de
 juntar contêineres diferentes.
 
+### Inspecionar as trilhas
+
+`Get-VwfStreams` lista as trilhas de um ou vários arquivos, o que serve para
+acompanhar o mesmo vídeo ao longo do workflow e ver em que etapa alguma coisa
+muda:
+
+```powershell
+'F:\DCIM\100GOPRO\GOPR0070.MP4',
+"$work\S5C_0070.MP4",
+"$work\S5C_0070_stabilized.mp4",
+"$proj\$(Split-Path $proj -Leaf).mp4" | Get-VwfStreams | Format-Table
+```
+
+### Cortar clipes no VirtualDub2
+
+O master sai com três trilhas: vídeo, áudio e uma de **timecode** (`tmcd`, uma
+amostra só), que o ffmpeg dentro do Gyroflow escreve. O arquivo está correto —
+ffprobe, VLC, MPC-HC e o YouTube leem certo — mas o VirtualDub2 passa a usar a
+escala de tempo do filme (1000) no lugar da escala da mídia (60000) e mostra
+uma duração 60× maior: um vídeo de 22min45s vira `22:44:49`, tocando normal até
+o fim real e rodando no vazio depois.
+
+Para cortar clipes lá, gere antes uma cópia sem a trilha extra (sem reencodar,
+leva segundos):
+
+```powershell
+Export-VwfForEditing -Project $proj      # gera <projeto>_edit.mp4
+```
+
+O master original fica intacto — é ele que vai para o YouTube e para a
+compactação.
+
 ### Um vídeo só
 
 Tanto na importação quanto na junção final, quando há **um único arquivo** o

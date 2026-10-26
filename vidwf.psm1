@@ -1364,6 +1364,69 @@ function Compress-VwfVideo {
     $out
 }
 
+function Export-VwfForEditing {
+    <#
+    .SYNOPSIS
+        Gera uma copia do video so com video e audio, para editores que
+        tropecam na trilha de timecode.
+    .DESCRIPTION
+        O ffmpeg dentro do Gyroflow escreve uma trilha de timecode (tmcd, uma
+        amostra so) junto do video. O arquivo fica correto - ffprobe, VLC e
+        MPC-HC leem certo - mas o VirtualDub2 passa a usar a escala de tempo do
+        filme (1000) no lugar da escala da midia (60000) e mostra uma duracao
+        60x maior, rodando no vazio depois do fim real.
+
+        Esta copia mantem so as trilhas de video e audio, sem reencodar
+        (-codec copy), entao leva segundos.
+    .EXAMPLE
+        Export-VwfForEditing -Project $proj
+    #>
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory, ParameterSetName = 'Project')][string]$Project,
+        [Parameter(ParameterSetName = 'Project')][string]$Name,
+        [Parameter(Mandatory, ParameterSetName = 'File')][string]$Path,
+        [string]$Suffix = '_edit',
+        [switch]$Force
+    )
+
+    $cfg = Get-VwfConfig
+
+    if ($PSCmdlet.ParameterSetName -eq 'Project') {
+        if (-not $Name) { $Name = Split-Path $Project -Leaf }
+        $m = Get-VwfMaster -Project $Project -Name $Name
+        if (-not $m) { throw "Master nao encontrado em $Project (procurei por '$Name.*')." }
+        $Path = $m.FullName
+    }
+    if (-not (Test-Path -LiteralPath $Path)) { throw "Arquivo nao encontrado: $Path" }
+
+    $src     = Get-Item -LiteralPath $Path
+    $destino = Join-Path $src.DirectoryName "$($src.BaseName)$Suffix$($src.Extension)"
+
+    if ((Test-Path -LiteralPath $destino) -and -not $Force) { throw "Ja existe: $destino (use -Force)" }
+    if (-not $PSCmdlet.ShouldProcess($destino, 'Gerar copia sem trilhas extras')) { return }
+
+    $durOrig = Get-VwfDuration $src.FullName
+
+    # '?' no mapeamento do audio: nao falha se o video nao tiver som.
+    & $cfg.Tools.FFmpeg -hide_banner -loglevel error -y -i $src.FullName `
+        -map 0:v:0 -map '0:a:0?' -codec copy $destino
+
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $destino)) {
+        Write-Error 'ffmpeg falhou ao gerar a copia para edicao.'
+        return
+    }
+
+    $durNova = Get-VwfDuration $destino
+    if ($durOrig -and $durNova -and ([math]::Abs($durNova - $durOrig) -gt 1.0)) {
+        Write-Warning ("Duracao divergente: original {0:n1}s, copia {1:n1}s." -f $durOrig, $durNova)
+    } else {
+        Write-Host ("OK: {0} ({1:n1}s)" -f (Split-Path $destino -Leaf), $durNova) -ForegroundColor Green
+    }
+
+    Get-Item -LiteralPath $destino
+}
+
 function Remove-VwfMaster {
     <#
     .SYNOPSIS
@@ -1484,6 +1547,50 @@ function Get-VwfStatus {
     }
 }
 
+function Get-VwfStreams {
+    <#
+    .SYNOPSIS
+        Lista as trilhas de um video (tipo, tag, quadros, escala de tempo).
+    .DESCRIPTION
+        Util para comparar o mesmo video ao longo do workflow e ver em que etapa
+        uma trilha aparece, some ou muda de escala.
+    .EXAMPLE
+        'F:\DCIM\100GOPRO\GOPR0070.MP4', "$work\S5C_0070.MP4" | Get-VwfStreams | Format-Table
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)][string[]]$Path
+    )
+
+    begin { $cfg = Get-VwfConfig }
+
+    process {
+        foreach ($p in $Path) {
+            if (-not (Test-Path -LiteralPath $p)) { Write-Warning "Nao encontrado: $p"; continue }
+            $arq = Get-Item -LiteralPath $p
+
+            $linhas = & $cfg.Tools.FFprobe -v error `
+                -show_entries stream=index,codec_type,codec_tag_string,codec_name,nb_frames,time_base,duration `
+                -of csv=p=0 -i $arq.FullName 2>$null
+
+            foreach ($l in $linhas) {
+                if ([string]::IsNullOrWhiteSpace($l)) { continue }
+                $c = $l -split ','
+                [pscustomobject]@{
+                    Arquivo  = $arq.Name
+                    Index    = $c[0]
+                    Tipo     = $c[1]
+                    Codec    = $c[2]
+                    Tag      = $c[3]
+                    TimeBase = $c[4]
+                    Duracao  = $c[5]
+                    Quadros  = $c[6]
+                }
+            }
+        }
+    }
+}
+
 function Write-VwfElapsed {
     [CmdletBinding()]
     param(
@@ -1504,8 +1611,8 @@ Export-ModuleMember -Function @(
     'Invoke-VwfStabilize', 'Get-VwfStabilizedOutput', 'Remove-VwfStabilizedSources',
     'Show-VwfPresetPaths', 'New-VwfCleanPreset',
     'Get-VwfTimeline', 'Join-VwfStabilized',
-    'Compress-VwfVideo', 'Remove-VwfMaster', 'Remove-VwfWorkDir',
-    'Get-VwfStatus', 'Get-VwfDuration', 'Get-VwfCreationTime', 'Get-VwfFrameRate',
+    'Compress-VwfVideo', 'Export-VwfForEditing', 'Remove-VwfMaster', 'Remove-VwfWorkDir',
+    'Get-VwfStatus', 'Get-VwfStreams', 'Get-VwfDuration', 'Get-VwfCreationTime', 'Get-VwfFrameRate',
     'Get-VwfFreeSpace', 'Test-VwfSpace', 'Assert-VwfSpace',
     'Test-VwfMerge', 'Write-VwfMergeCheck', 'Test-VwfFileReady', 'Write-VwfElapsed'
 )
